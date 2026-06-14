@@ -1,0 +1,10 @@
+title       = "regex101"
+baseURL     = "https://regex101-cli.tamnd.com/"
+description = "A command line for regex101."
+contentDir  = "content"
+outputDir   = "public"
+theme       = "tago-doks"
+syntaxHighlight = "true"
+
+[params]
+github = "https://github.com/tamnd/regex101-cli"
