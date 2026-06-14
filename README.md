@@ -1,10 +1,8 @@
 # regex101
 
-A command line for regex101.
+Browse the [regex101.com](https://regex101.com) shared pattern library from the command line.
 
-`regex101` is a single pure-Go binary. It speaks to regex101 over plain
-HTTPS, shapes the responses into clean records, and pipes into the rest of your
-tools. No API key, nothing to run alongside it.
+`regex101` is a single pure-Go binary. No API key required.
 
 ## Install
 
@@ -12,8 +10,7 @@ tools. No API key, nothing to run alongside it.
 go install github.com/tamnd/regex101-cli/cmd/regex101@latest
 ```
 
-Or grab a prebuilt binary from the [releases](https://github.com/tamnd/regex101-cli/releases), or run
-the container image:
+Or grab a prebuilt binary from the [releases](https://github.com/tamnd/regex101-cli/releases), or run the container image:
 
 ```bash
 docker run --rm ghcr.io/tamnd/regex101:latest --help
@@ -22,42 +19,44 @@ docker run --rm ghcr.io/tamnd/regex101:latest --help
 ## Usage
 
 ```bash
-regex101 --help
-regex101 version
+# List top regex patterns by upvotes (default 20)
+regex101 list
+
+# Filter by language flavor
+regex101 list --flavor python
+regex101 list --flavor javascript
+regex101 list --flavor pcre
+
+# Search patterns by keyword
+regex101 search "email"
+regex101 search "url validation" --flavor javascript
+
+# Output formats
+regex101 list -o json
+regex101 list -o csv
+regex101 search "phone" -o table
 ```
 
-This is a fresh scaffold. The command tree starts with `version`; build out the
-real commands in `cli/` on top of the `regex101` library package.
+## Commands
 
-## Development
+| Command | Description |
+|---------|-------------|
+| `list` | List top regex patterns by upvotes (optional `--flavor` filter) |
+| `search <query>` | Search patterns by keyword (optional `--flavor` filter) |
+| `version` | Show version information |
+
+## Flavors
+
+`javascript`, `python`, `pcre`, `pcre2`, `php`, `golang`, `java`, `ruby`, `rust`, `csharp`
+
+## Global flags
 
 ```
-cmd/regex101/   thin main, wires cli.Root into fang
-cli/                 the cobra command tree
-regex101/                the library: HTTP client and data models
-docs/                tago documentation site
+-o, --output string    output format: table|json|jsonl|csv|tsv|url|raw (default "auto")
+-n, --limit int        limit number of records (0 = command default)
+    --fields strings   comma-separated columns to include
+    --no-header        omit header row
+    --template string  Go text/template per record
+    --timeout duration per-request timeout (default 30s)
+    --delay duration   minimum spacing between requests
 ```
-
-```bash
-make build      # ./bin/regex101
-make test       # go test ./...
-make vet        # go vet ./...
-```
-
-## Releasing
-
-Push a version tag and GitHub Actions runs GoReleaser, which builds the
-archives, Linux packages, the multi-arch GHCR image, checksums, SBOMs, and a
-cosign signature:
-
-```bash
-git tag v0.1.0
-git push --tags
-```
-
-The Homebrew and Scoop steps self-disable until their tokens exist, so the first
-release works with no extra secrets.
-
-## License
-
-Apache-2.0. See [LICENSE](LICENSE).

@@ -1,62 +1,106 @@
-package regex101
+package regex101_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
+
+	"github.com/tamnd/regex101-cli/regex101"
 )
 
-func TestGet(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("User-Agent") == "" {
-			t.Error("request carried no User-Agent")
-		}
-		_, _ = w.Write([]byte("ok"))
+func mockResp(items []map[string]any, hasMore bool, cursor string) string {
+	resp := map[string]any{
+		"data":       items,
+		"hasMore":    hasMore,
+		"nextCursor": cursor,
+	}
+	b, _ := json.Marshal(resp)
+	return string(b)
+}
+
+func makeItems(n int) []map[string]any {
+	var items []map[string]any
+	for i := 1; i <= n; i++ {
+		items = append(items, map[string]any{
+			"title":             fmt.Sprintf("Pattern %d", i),
+			"author":            "tester",
+			"flavor":            "javascript",
+			"permalinkFragment": fmt.Sprintf("abc%d", i),
+			"upvotes":           100 - i,
+			"downvotes":         i,
+			"dateCreated":       "2023-01-01T00:00:00.000Z",
+		})
+	}
+	return items
+}
+
+func newTestClient(ts *httptest.Server) *regex101.Client {
+	cfg := regex101.DefaultConfig()
+	cfg.BaseURL = ts.URL
+	cfg.Rate = 0
+	return regex101.NewClient(cfg)
+}
+
+func TestList(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, mockResp(makeItems(5), false, ""))
 	}))
-	defer srv.Close()
+	defer ts.Close()
 
-	c := NewClient()
-	c.Rate = 0 // no pacing in the test
-
-	body, err := c.Get(context.Background(), srv.URL)
+	patterns, err := newTestClient(ts).List(context.Background(), "", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(body) != "ok" {
-		t.Errorf("body = %q, want %q", body, "ok")
+	if len(patterns) != 5 {
+		t.Fatalf("got %d patterns, want 5", len(patterns))
+	}
+	if patterns[0].Title != "Pattern 1" {
+		t.Errorf("patterns[0].Title = %q", patterns[0].Title)
+	}
+	if patterns[0].URL == "" {
+		t.Error("URL should not be empty")
 	}
 }
 
-func TestGetRetriesOn503(t *testing.T) {
-	var hits int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
-		if hits < 3 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
+func TestListPagination(t *testing.T) {
+	page := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page++
+		if page == 1 {
+			_, _ = fmt.Fprint(w, mockResp(makeItems(3), true, "cursor123"))
+		} else {
+			_, _ = fmt.Fprint(w, mockResp(makeItems(3), false, ""))
 		}
-		_, _ = w.Write([]byte("recovered"))
 	}))
-	defer srv.Close()
+	defer ts.Close()
 
-	c := NewClient()
-	c.Rate = 0
-	c.Retries = 5
-
-	start := time.Now()
-	body, err := c.Get(context.Background(), srv.URL)
+	patterns, err := newTestClient(ts).List(context.Background(), "", 6)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(body) != "recovered" {
-		t.Errorf("body = %q after retries", body)
+	if len(patterns) != 6 {
+		t.Fatalf("got %d patterns, want 6", len(patterns))
 	}
-	if hits != 3 {
-		t.Errorf("server saw %d hits, want 3", hits)
+}
+
+func TestSearch(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("search")
+		if q != "email" {
+			t.Errorf("unexpected search query %q", q)
+		}
+		_, _ = fmt.Fprint(w, mockResp(makeItems(3), false, ""))
+	}))
+	defer ts.Close()
+
+	patterns, err := newTestClient(ts).Search(context.Background(), "email", "", 3)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if time.Since(start) < 500*time.Millisecond {
-		t.Error("retries did not back off")
+	if len(patterns) != 3 {
+		t.Fatalf("got %d patterns, want 3", len(patterns))
 	}
 }
